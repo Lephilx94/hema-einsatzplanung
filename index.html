@@ -104,7 +104,12 @@
   .group-fill { background:color-mix(in srgb,var(--brand) 6%, var(--panel));
     border-bottom:1px solid var(--border); }
   .name-cell { z-index:30; border-bottom:1px solid var(--grid-strong); border-right:1px solid var(--border);
-    display:flex; align-items:center; padding:0 12px; font-size:14px; font-weight:500; }
+    display:flex; flex-direction:column; justify-content:center; gap:2px; padding:0 12px; font-size:14px; font-weight:500; }
+  .name-cell .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .edit-flag { font-size:10px; font-weight:700; color:#b45309; background:#fef3c7; border:1px solid #fcd34d;
+    border-radius:6px; padding:1px 6px; width:fit-content; animation:editpulse 1.2s ease-in-out infinite; }
+  body.dark .edit-flag { color:#fde68a; background:#3a2e0a; border-color:#7c5e10; }
+  @keyframes editpulse { 0%,100%{ opacity:1; } 50%{ opacity:.45; } }
   .track { position:relative; border-bottom:1px solid var(--grid-strong); cursor:pointer; }
   .bg-cells { position:absolute; inset:0; display:flex; }
   .bg-day { border-right:1px solid var(--grid); }
@@ -308,9 +313,12 @@
   // ===== VERSIONS-DATUM =====
   // Nach jeder Änderung hier das Datum anpassen, dann sieht man oben im Kopf sofort, welche Version geladen ist.
   // Regel: pro Tag bei "Build 1" beginnen, jede weitere Änderung am selben Tag hochzählen.
-  var APP_VERSION = "24.06.2026 · Build 3";
+  var APP_VERSION = "24.06.2026 · Build 5";
 
   var cloud = { sb:null, on:false, status:"local", error:"", subscribed:false };
+  // Live-Anwesenheit: anonym, zeigt nur, an welchem Monteur gerade jemand arbeitet
+  var mySession = "s"+Date.now()+"-"+Math.floor(Math.random()*1e6);
+  var presence = { ch:null, editing:{}, others:{}, myEmp:null };
   function _ls(k){ try{ return localStorage.getItem(k)||""; }catch(e){ return ""; } }
   function cloudCfg(){
     return { url:(SUPABASE_URL||_ls("hema_sb_url")).trim(), key:(SUPABASE_ANON||_ls("hema_sb_key")).trim() };
@@ -346,7 +354,50 @@
         .on("postgres_changes",{event:"*",schema:"public",table:"assignments"},function(p){ applyRemote(store.assignments,p,mapAsg); scheduleRender(); })
         .subscribe();
       cloud.subscribed=true;
+      cloudPresence();
     }catch(e){ cloudErr(e); }
+  }
+  // ===== Live-Anwesenheit (wer bearbeitet gerade welchen Monteur) =====
+  function cloudPresence(){
+    if(!cloud.on || presence.ch) return;
+    try{
+      var ch = cloud.sb.channel("hema-presence", { config:{ presence:{ key: mySession } } });
+      ch.on("presence",{event:"sync"},function(){
+        var st = ch.presenceState(); var allMap={}, otherMap={};
+        Object.keys(st).forEach(function(k){
+          (st[k]||[]).forEach(function(m){
+            if(m && m.editing!=null && m.editing!==""){
+              var id=String(m.editing); allMap[id]=true;
+              if(k!==mySession) otherMap[id]=true; // nur fremde Sitzungen
+            }
+          });
+        });
+        presence.editing = allMap;   // alle (auch ich) -> Zeilen-Hinweis
+        presence.others = otherMap;  // nur andere -> Warnung im Fenster
+        presenceChanged();
+      });
+      ch.subscribe(function(status){ if(status==="SUBSCRIBED"){ presence.ch=ch; try{ ch.track({ editing: presence.myEmp }); }catch(e){} } });
+    }catch(e){ console.warn("presence:",e); }
+  }
+  function setEditing(empId){
+    presence.myEmp = empId ? String(empId) : null;
+    if(presence.ch){ try{ presence.ch.track({ editing: presence.myEmp }); }catch(e){} }
+  }
+  function othersEditing(empId){ return !!(empId && presence.others[String(empId)]); }
+  function editingAny(empId){ return !!(empId && presence.editing[String(empId)]); }
+  var _presTimer=null;
+  function presenceChanged(){
+    clearTimeout(_presTimer);
+    _presTimer=setTimeout(function(){
+      if(!document.querySelector(".bar.dragging")) render();
+      updateEditingWarning();
+    }, 120);
+  }
+  function updateEditingWarning(){
+    var box=document.getElementById("w-editlock"); if(!box) return;
+    box.innerHTML = (presence.myEmp && othersEditing(presence.myEmp))
+      ? '<div class="avail warn">⚠ Achtung: An diesem Monteur arbeitet gerade jemand anderes. Bitte abstimmen, um euch nicht zu überschreiben.</div>'
+      : "";
   }
   function applyRemote(arr,payload,map){
     if(payload.eventType==="DELETE"){ var id=payload.old&&payload.old.id; var i=arr.findIndex(function(x){return x.id===id;}); if(i>=0) arr.splice(i,1); }
@@ -606,8 +657,9 @@
             'px;top:'+(ROW_PAD+b.lane*(BAR_H+BAR_GAP))+'px;height:'+BAR_H+'px;background:'+TYPE_COLOR[b.a.type]+
             ';color:'+TYPE_TEXT[b.a.type]+';'+dash+'">'+handles+'<span class="bar-label">'+esc(txt)+'</span>'+handlesR+'</button>';
         }).join("");
+        var editBadge = editingAny(emp.id) ? '<span class="edit-flag" title="An diesem Monteur wird gerade gearbeitet">✏️ wird bearbeitet</span>' : '';
         body+='<div class="hrow">'+
-          '<div class="name-cell" style="width:'+NAME_W+'px;height:'+rowH+'px">'+esc(emp.name)+'</div>'+
+          '<div class="name-cell" style="width:'+NAME_W+'px;height:'+rowH+'px"><span class="nm">'+esc(emp.name)+'</span>'+editBadge+'</div>'+
           '<div class="track" data-track="'+emp.id+'" style="width:'+gridW+'px;height:'+rowH+'px">'+
             '<div class="bg-cells">'+bgCells+'</div>'+todayLine+bars+
           '</div></div>';
@@ -1016,7 +1068,7 @@
   }
 
   // ---------- Modals ----------
-  function closeModal(){ document.getElementById("modal-root").innerHTML=""; }
+  function closeModal(){ document.getElementById("modal-root").innerHTML=""; setEditing(null); }
 
   // Eigener Bestätigungsdialog (unabhängig von window.confirm, das in Vorschauen blockiert sein kann)
   function confirmDialog(msg, onYes, opts){
@@ -1192,6 +1244,7 @@
       var del = existing?'<button class="danger" data-del-assign="'+existing.id+'">Löschen</button>':'';
       document.getElementById("modal-root").innerHTML='<div class="overlay" data-overlay><div class="modal">'+
         '<div class="modal-head"><h2>'+(existing?"Einsatz bearbeiten":"Neuer Einsatz")+'</h2><button class="close-x" data-close>×</button></div>'+
+        '<div id="w-editlock"></div>'+
         stepperHTML()+body+
         '<div class="err" id="w-err" style="display:none"></div>'+
         '<div class="modal-foot"><div>'+del+'</div><div style="display:flex;gap:10px">'+back+next+'</div></div>'+
@@ -1225,6 +1278,7 @@
         if(es) es.onchange=function(){
           readStep();
           if(w._isNew){ var nf=nextFreeDate(+w.employee_id); w.start_date=nf; w.end_date=nf; }
+          setEditing(w.employee_id);
           renderWiz();
         };
       }
@@ -1251,7 +1305,9 @@
         if(cs.length){ confirmDialog("Für "+empName(+w.employee_id)+" besteht in diesem Zeitraum ein Konflikt (Urlaub oder Doppelbelegung). Trotzdem speichern?", doSave, {title:"Konflikt", yesLabel:"Trotzdem speichern", brand:true}); }
         else doSave();
       };
+      updateEditingWarning();
     }
+    setEditing(w.employee_id);
     renderWiz();
   }
 
@@ -1559,6 +1615,7 @@
   render();
   if(cloud.on){ cloudLoad(); }
   window.addEventListener("focus", function(){ if(cloud.on && cloud.status==="connected"){ cloudLoad(); } });
+  window.addEventListener("beforeunload", function(){ try{ if(presence.ch){ presence.ch.untrack(); } }catch(e){} });
 })();
 </script>
 </body>
