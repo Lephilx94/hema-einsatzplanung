@@ -9,11 +9,13 @@
     --brand:#005987; --brand-dark:#004a70; --brand-light:#3a86ab;
     --bg:#f3f4f6; --panel:#ffffff; --text:#111827; --muted:#6b7280;
     --border:#e5e7eb; --border-soft:#f1f3f5; --hover:#f3f4f6; --weekend:#eef4f8;
+    --grid:#dfe4ea; --grid-strong:#b8c2cf;
     --c-montage:#005987; --c-tentative:#16a34a; --c-urlaub:#eab308; --c-sonstiges:#dc2626;
   }
   body.dark {
     --bg:#0b0f14; --panel:#111827; --text:#e5e7eb; --muted:#9ca3af;
     --border:#1f2937; --border-soft:#1a2230; --hover:#1a2230; --weekend:#161f29;
+    --grid:#283142; --grid-strong:#3b4760;
   }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; }
@@ -86,9 +88,10 @@
   .corner-day { border-bottom:1px solid var(--border); border-right:1px solid var(--border);
     background:var(--panel); height:40px; z-index:50; display:flex; align-items:center;
     padding:0 12px; font-size:12px; font-weight:600; color:var(--muted); }
-  .day-head { border-bottom:1px solid var(--border-soft); border-right:1px solid var(--border-soft);
+  .day-head { border-bottom:1px solid var(--grid); border-right:1px solid var(--grid);
     text-align:center; font-size:10px; height:40px; }
   .day-head.we { background:var(--weekend); }
+  .day-head.wk { border-left:2px solid var(--grid-strong); }
   .day-head .wd { padding-top:4px; color:var(--muted); }
   .day-head .dn { color:var(--text); }
   .day-head.today .wd { color:var(--brand); font-weight:700; }
@@ -100,11 +103,12 @@
     letter-spacing:.04em; padding:4px 12px; }
   .group-fill { background:color-mix(in srgb,var(--brand) 6%, var(--panel));
     border-bottom:1px solid var(--border); }
-  .name-cell { z-index:30; border-bottom:1px solid var(--border); border-right:1px solid var(--border);
+  .name-cell { z-index:30; border-bottom:1px solid var(--grid-strong); border-right:1px solid var(--border);
     display:flex; align-items:center; padding:0 12px; font-size:14px; font-weight:500; }
-  .track { position:relative; border-bottom:1px solid var(--border-soft); cursor:pointer; }
+  .track { position:relative; border-bottom:1px solid var(--grid-strong); cursor:pointer; }
   .bg-cells { position:absolute; inset:0; display:flex; }
-  .bg-day { border-right:1px solid var(--border-soft); }
+  .bg-day { border-right:1px solid var(--grid); }
+  .bg-day.wk { border-left:2px solid var(--grid-strong); }
   .bg-day.we { background:var(--weekend); }
   .today-line { position:absolute; top:0; bottom:0; width:1px; background:var(--brand); opacity:.7; z-index:20; }
   .bar { position:absolute; z-index:10; display:flex; align-items:center; overflow:hidden;
@@ -166,7 +170,7 @@
 
   /* cards */
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
-  .card { border:1px solid var(--border); background:var(--panel); border-radius:14px; padding:16px; }
+  .card { border:1px solid var(--border); background:var(--panel); color:var(--text); border-radius:14px; padding:16px; }
   .card.click { text-align:left; }
   .card.click:hover { border-color:var(--brand); }
   .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; }
@@ -385,6 +389,7 @@
     search:"",
     typeFilter:"",
     statsYear:String(new Date().getFullYear()),
+    statsTeam:"",
     teamFilter:"",
     selectedEmployee:null
   };
@@ -522,15 +527,15 @@
     var monthRow=months.map(function(m){ return '<div class="month-seg" style="width:'+(m.days*DAY_W)+'px">'+m.label+'</div>'; }).join("");
     var kwRow=weeks.map(function(w){ return '<div class="kw-seg" style="width:'+(w.days*DAY_W)+'px">'+(w.days>=2?w.label:"")+'</div>'; }).join("");
     var dayRow=days.map(function(d){
-      var we=isWeekend(d), td=sameDay(d,today);
-      return '<div class="day-head'+(we?" we":"")+(td?" today":"")+'" style="width:'+DAY_W+'px">'+
+      var we=isWeekend(d), td=sameDay(d,today), wk=(d.getDay()===1);
+      return '<div class="day-head'+(we?" we":"")+(wk?" wk":"")+(td?" today":"")+'" style="width:'+DAY_W+'px">'+
         '<div class="wd">'+WEEKDAYS[(d.getDay()+6)%7]+'</div><div class="dn">'+pad(d.getDate())+'</div></div>';
     }).join("");
 
-    var bgCells=days.map(function(d){ return '<div class="bg-day'+(isWeekend(d)?" we":"")+'" style="width:'+DAY_W+'px"></div>'; }).join("");
+    var bgCells=days.map(function(d){ return '<div class="bg-day'+(isWeekend(d)?" we":"")+(d.getDay()===1?" wk":"")+'" style="width:'+DAY_W+'px"></div>'; }).join("");
     var todayOff=diffDays(winStart,today);
     var showToday=todayOff>=0&&todayOff<totalDays;
-    var todayLine=showToday?'<div class="today-line" style="left:'+(todayOff*DAY_W+DAY_W/2)+'px"></div>':"";
+    var todayLine="";
 
     // Gruppen (mit Team-Filter)
     var visibleEmps=employeesSorted().filter(function(e){ return !ui.teamFilter || (e.team||"Ohne Team")===ui.teamFilter; });
@@ -561,7 +566,8 @@
     });
     if(store.employees.length===0) body='<div class="empty">Noch keine Monteure angelegt.</div>';
 
-    var weeksOpts=[8,12,16,26,52].map(function(w){ return '<option value="'+w+'"'+(ui.weeks===w?" selected":"")+'>'+w+' Wochen</option>'; }).join("");
+    var weekChoices=[[8,"8 Wochen"],[12,"12 Wochen"],[16,"16 Wochen"],[26,"26 Wochen (½ Jahr)"],[52,"1 Jahr"],[104,"2 Jahre"],[156,"3 Jahre"],[208,"4 Jahre (bis ~2030)"]];
+    var weeksOpts=weekChoices.map(function(c){ return '<option value="'+c[0]+'"'+(ui.weeks===c[0]?" selected":"")+'>'+c[1]+'</option>'; }).join("");
     var teamOpts2='<option value=""'+(!ui.teamFilter?" selected":"")+'>Alle Teams</option>'+
       teams().map(function(t){ return '<option value="'+esc(t)+'"'+(ui.teamFilter===t?" selected":"")+'>'+esc(t)+'</option>'; }).join("");
 
@@ -661,19 +667,50 @@
   function listHTML(){
     var filterBtns='<button class="tab'+(ui.typeFilter===""?" active":"")+'" data-filter="">Alle</button>'+
       TYPES.map(function(t){ return '<button class="tab'+(ui.typeFilter===t?" active":"")+'" data-filter="'+t+'">'+TYPE_LABEL[t]+'</button>'; }).join("");
-    var teamOpts='<option value=""'+(!ui.teamFilter?" selected":"")+'>Alle Teams</option>'+
-      teams().map(function(t){ return '<option value="'+esc(t)+'"'+(ui.teamFilter===t?" selected":"")+'>'+esc(t)+'</option>'; }).join("");
-    var rows=filteredAssignments();
-    var table =
-      '<table><thead><tr><th>Art</th><th>Projekt / Kunde</th><th>Land</th><th>Zeitraum</th><th>Status</th><th style="text-align:right">Aktion</th></tr></thead><tbody id="list-body">'+buildListBody(rows)+'</tbody></table>';
-    return ''+
+
+    // Monteur-Auswahl (nach Team gruppiert)
+    var byTeam={};
+    store.employees.forEach(function(e){ var k=e.team||"Ohne Team"; (byTeam[k]=byTeam[k]||[]).push(e); });
+    var teamNames=Object.keys(byTeam).sort(function(a,b){
+      var ma=Math.min.apply(null, byTeam[a].map(function(e){return e.sort_order;}));
+      var mb=Math.min.apply(null, byTeam[b].map(function(e){return e.sort_order;}));
+      return ma-mb;
+    });
+    var empOpts='<option value="">— Monteur wählen —</option>'+ teamNames.map(function(t){
+      var list=byTeam[t].slice().sort(function(x,y){ return x.name.localeCompare(y.name,"de"); });
+      return '<optgroup label="'+esc(t)+'">'+ list.map(function(e){
+        return '<option value="'+e.id+'"'+(ui.selectedEmployee===e.id?" selected":"")+'>'+esc(e.name)+'</option>';
+      }).join("")+'</optgroup>';
+    }).join("");
+
+    var toolbar=''+
     '<div class="toolbar">'+
-      '<input type="text" id="search" placeholder="Suche: Monteur, Projekt/Kunde oder Land…" value="'+esc(ui.search)+'" style="min-width:280px"/>'+
-      '<span class="hint" style="margin-left:8px">Team:</span>'+
-      '<select data-act="team-filter">'+teamOpts+'</select>'+
+      '<span class="hint">Monteur:</span>'+
+      '<select data-act="list-emp" style="min-width:220px">'+empOpts+'</select>'+
       '<div class="grow"></div>'+
       '<div class="filter-group">'+filterBtns+'</div>'+
-    '</div>'+ table;
+    '</div>';
+
+    // Ohne Auswahl: nichts anzeigen, nur Hinweis
+    if(ui.selectedEmployee==null){
+      return toolbar+'<div class="card"><div class="empty" style="padding:40px;text-align:center;color:var(--muted)">Bitte oben einen Monteur auswählen, um dessen Einsätze zu sehen.</div></div>';
+    }
+
+    var emp=store.employees.find(function(e){return e.id===ui.selectedEmployee;});
+    if(!emp){ ui.selectedEmployee=null; return toolbar; }
+
+    var rows=filteredAssignments().filter(function(a){ return a.employee_id===ui.selectedEmployee; });
+    var table =
+      '<div class="card">'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'+avatar(emp.name,28,emp.color)+
+        '<span style="font-weight:600;font-size:16px">'+esc(emp.name)+'</span>'+(emp.team?' <span class="hint">· '+esc(emp.team)+'</span>':'')+
+        '<div class="grow"></div>'+
+        '<button class="btn btn-primary" data-act="new-assign-for" data-emp="'+emp.id+'">+ Einsatz</button>'+
+      '</div>'+
+      '<table><thead><tr><th>Art</th><th>Projekt / Kunde</th><th>Land</th><th>Zeitraum</th><th>Status</th><th style="text-align:right">Aktion</th></tr></thead><tbody id="list-body">'+
+        (rows.length?rows.map(rowHTML).join(""):'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Keine Einsätze für diesen Monteur.</td></tr>')+
+      '</tbody></table></div>';
+    return toolbar + table;
   }
 
   // ---------- Render: Monteure ----------
@@ -744,6 +781,9 @@
     // Jahre aus den Daten
     var yset={}; store.assignments.forEach(function(a){ yset[a.start_date.slice(0,4)]=1; yset[a.end_date.slice(0,4)]=1; });
     var cy=String(new Date().getFullYear()); yset[cy]=1;
+    // Zukunftsjahre bis 2030 immer zur Auswahl anbieten
+    var maxYear=Math.max(2030, new Date().getFullYear());
+    for(var yy=new Date().getFullYear(); yy<=maxYear; yy++){ yset[String(yy)]=1; }
     var yearList=Object.keys(yset).sort();
     var sel = ui.statsYear || cy;
     if(sel!=="all" && yearList.indexOf(sel)===-1) sel=cy;
@@ -757,20 +797,34 @@
       if(bb<aa) return 0;
       return diffDays(aa,bb)+1;
     }
+    // Werktage (Mo–Fr) eines Eintrags – Wochenenden zählen nicht (z. B. Urlaub)
+    function workdaysIn(a){
+      var s,e;
+      if(sel==="all"){ s=parseIso(a.start_date); e=parseIso(a.end_date); }
+      else { var ys=parseIso(sel+"-01-01"), ye=parseIso(sel+"-12-31"), ss=parseIso(a.start_date), ee=parseIso(a.end_date); s=ss>ys?ss:ys; e=ee<ye?ee:ye; }
+      var total=diffDays(s,e); if(total<0) return 0;
+      var n=0;
+      for(var i=0;i<=total;i++){ if(!isWeekend(addDays(s,i))) n++; }
+      return n;
+    }
+
+    var teamSel = ui.statsTeam || "";
+    function inTeam(empId){ if(!teamSel) return true; return (empTeam(empId)||"Ohne Team")===teamSel; }
 
     var perEmp={}; employeesSorted().forEach(function(e){ perEmp[e.id]={montage:0,tentative:0,sonstiges:0,urlaub:0}; });
     var totM=0,totT=0,totS=0,totU=0;
     store.assignments.forEach(function(a){
+      if(!inTeam(a.employee_id)) return;
       var d=daysIn(a); if(d<=0) return;
       var p=perEmp[a.employee_id] || (perEmp[a.employee_id]={montage:0,tentative:0,sonstiges:0,urlaub:0});
       if(a.type==="montage"){ p.montage+=d; totM+=d; }
       else if(a.type==="montage_tentative"){ p.tentative+=d; totT+=d; }
       else if(a.type==="sonstiges"){ p.sonstiges+=d; totS+=d; }
-      else if(a.type==="urlaub"){ p.urlaub+=d; totU+=d; }
+      else if(a.type==="urlaub"){ var wd=workdaysIn(a); p.urlaub+=wd; totU+=wd; }
     });
     var totE = totM+totT+totS;
 
-    var land={}; store.assignments.forEach(function(a){ if(!a.country) return; var d=daysIn(a); if(d<=0) return;
+    var land={}; store.assignments.forEach(function(a){ if(!a.country) return; if(!inTeam(a.employee_id)) return; var d=daysIn(a); if(d<=0) return;
       if(!land[a.country]) land[a.country]={count:0,days:0}; land[a.country].count++; land[a.country].days+=d; });
     var landArr=Object.keys(land).map(function(c){ return {country:c,count:land[c].count,days:land[c].days}; })
       .sort(function(x,y){ return y.days-x.days; });
@@ -780,18 +834,33 @@
 
     function bigCard(label,val,color){ return '<div class="stat-box"><div class="stat-num" style="color:'+color+'">'+val+'</div><div class="stat-label">'+label+'</div></div>'; }
 
-    var empRows=employeesSorted().map(function(e){
-      var p=perEmp[e.id]||{montage:0,tentative:0,sonstiges:0,urlaub:0};
-      var eins=p.montage+p.tentative+p.sonstiges;
-      return '<tr>'+
-        '<td><span style="display:inline-flex;align-items:center;gap:8px">'+avatar(e.name,24,e.color)+'<span style="font-weight:500">'+esc(e.name)+'</span></span></td>'+
-        '<td style="text-align:right">'+p.montage+'</td>'+
-        '<td style="text-align:right">'+p.tentative+'</td>'+
-        '<td style="text-align:right">'+p.sonstiges+'</td>'+
-        '<td style="text-align:right;color:#b8860b">'+p.urlaub+'</td>'+
-        '<td style="text-align:right;font-weight:700">'+eins+'</td>'+
-      '</tr>';
-    }).join("");
+    var empRows=(function(){
+      // Monteure nach Team gruppieren (Reihenfolge wie in der Plantafel), jedes Team genau einmal
+      var groups={}, order=[];
+      employeesSorted().forEach(function(e){
+        var team=e.team||"Ohne Team";
+        if(teamSel && team!==teamSel) return;
+        if(!groups[team]){ groups[team]=[]; order.push(team); }
+        groups[team].push(e);
+      });
+      var rows="";
+      order.forEach(function(team){
+        rows+='<tr><td colspan="6" style="background:#eef2f7;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:12px;color:#334155;padding:6px 10px">'+esc(team)+'</td></tr>';
+        groups[team].forEach(function(e){
+          var p=perEmp[e.id]||{montage:0,tentative:0,sonstiges:0,urlaub:0};
+          var eins=p.montage+p.tentative+p.sonstiges;
+          rows+='<tr>'+
+            '<td><span style="display:inline-flex;align-items:center;gap:8px">'+avatar(e.name,24,e.color)+'<span style="font-weight:500">'+esc(e.name)+'</span></span></td>'+
+            '<td style="text-align:right">'+p.montage+'</td>'+
+            '<td style="text-align:right">'+p.tentative+'</td>'+
+            '<td style="text-align:right">'+p.sonstiges+'</td>'+
+            '<td style="text-align:right;color:#b8860b">'+p.urlaub+'</td>'+
+            '<td style="text-align:right;font-weight:700">'+eins+'</td>'+
+          '</tr>';
+        });
+      });
+      return rows;
+    })();
 
     var landRows = landArr.length ? landArr.map(function(c){
       return '<tr><td>'+esc(c.country)+'</td><td style="text-align:right">'+c.count+'</td><td style="text-align:right;font-weight:600">'+c.days+'</td></tr>';
@@ -799,9 +868,14 @@
 
     var periodLabel = sel==="all" ? "gesamter Zeitraum" : "Jahr "+sel;
 
+    var teamStatOpts='<option value=""'+(!teamSel?" selected":"")+'>Alle Teams</option>'+
+      teams().map(function(t){ return '<option value="'+esc(t)+'"'+(teamSel===t?" selected":"")+'>'+esc(t)+'</option>'; }).join("");
+
     return ''+
     '<div class="toolbar"><span class="hint">Auswertung für:</span>'+
       '<select data-act="stats-year">'+yearOpts+'</select>'+
+      '<span class="hint" style="margin-left:8px">Team:</span>'+
+      '<select data-act="stats-team">'+teamStatOpts+'</select>'+
       '<span class="grow hint">Alle Werte in Tagen ('+periodLabel+').</span></div>'+
 
     '<div class="cards" style="grid-template-columns:1fr;gap:16px">'+
@@ -809,7 +883,7 @@
         '<div style="overflow-x:auto"><table><thead><tr>'+
           '<th>Monteur</th><th style="text-align:right">Montage</th><th style="text-align:right">Montage evtl.</th><th style="text-align:right">Sonstiges</th><th style="text-align:right">Urlaub</th><th style="text-align:right">Einsatztage</th>'+
         '</tr></thead><tbody>'+ (empRows||'<tr><td colspan="6" class="hint" style="padding:16px">Keine Monteure.</td></tr>') +'</tbody></table></div>'+
-        '<p class="hint" style="margin-top:8px">„Einsatztage" = Montage + Montage evtl. + Sonstiges (ohne Urlaub).</p></div>'+
+        '<p class="hint" style="margin-top:8px">„Einsatztage" = Montage + Montage evtl. + Sonstiges (ohne Urlaub). Urlaub zählt nur Werktage (Mo–Fr) – Wochenenden werden nicht mitgezählt.</p></div>'+
       '<div class="card"><h3 class="section-title">Einsätze &amp; Tage pro Land ('+periodLabel+')</h3>'+
         '<div style="overflow-x:auto"><table><thead><tr><th>Land</th><th style="text-align:right">Einsätze</th><th style="text-align:right">Tage</th></tr></thead>'+
         '<tbody>'+landRows+'</tbody></table></div></div>'+
@@ -933,9 +1007,12 @@
         return '<li><b>'+kind+'</b>: '+(a.label?esc(a.label)+" · ":"")+TYPE_LABEL[a.type]+' ('+fmtDE(a.start_date)+' – '+fmtDE(a.end_date)+')</li>'; }).join("");
       return '<div class="avail warn">⚠ Konflikt für '+esc(empName(+w.employee_id))+':<ul>'+li+'</ul></div>';
     }
+    function maxStep(){ return w.type==="urlaub" ? 2 : 3; }
     function stepperHTML(){
       function d(n,lbl){ return '<span class="dot'+(w.step===n?" cur":(w.step>n?" done":""))+'">'+n+'</span><span class="dot-l'+(w.step>=n?" on":"")+'">'+lbl+'</span>'; }
-      return '<div class="stepper">'+d(1,"Wer & Was")+'<span class="sep"></span>'+d(2,"Zeitraum")+'<span class="sep"></span>'+d(3,"Details")+'</div>';
+      var s='<div class="stepper">'+d(1,"Wer & Was")+'<span class="sep"></span>'+d(2,"Zeitraum");
+      if(maxStep()>=3){ s+='<span class="sep"></span>'+d(3,"Details"); }
+      return s+'</div>';
     }
     function empSelectOptions(selectedId){
       var byTeam={};
@@ -989,7 +1066,7 @@
     function renderWiz(){
       var body = w.step===1?bodyStep1(): w.step===2?bodyStep2(): bodyStep3();
       var back = w.step>1?'<button class="btn" id="w-back">‹ Zurück</button>':'<button class="btn" data-close>Abbrechen</button>';
-      var next = w.step<3?'<button class="btn btn-primary" id="w-next">Weiter ›</button>':'<button class="btn btn-primary" id="w-save">Speichern</button>';
+      var next = w.step<maxStep()?'<button class="btn btn-primary" id="w-next">Weiter ›</button>':'<button class="btn btn-primary" id="w-save">Speichern</button>';
       var del = existing?'<button class="danger" data-del-assign="'+existing.id+'">Löschen</button>':'';
       document.getElementById("modal-root").innerHTML='<div class="overlay" data-overlay><div class="modal">'+
         '<div class="modal-head"><h2>'+(existing?"Einsatz bearbeiten":"Neuer Einsatz")+'</h2><button class="close-x" data-close>×</button></div>'+
@@ -1019,6 +1096,10 @@
         if(elS){ elS.oninput=onStart; elS.onchange=onStart; }
         if(elE){ elE.oninput=onEnd; elE.onchange=onEnd; }
       }
+      if(w.step===1){
+        var ts=document.getElementById("w-type");
+        if(ts) ts.onchange=function(){ readStep(); renderWiz(); };
+      }
       if(w.step===3){
         var contSel=document.getElementById("w-continent");
         if(contSel) contSel.onchange=function(){
@@ -1036,6 +1117,7 @@
       var sv=document.getElementById("w-save"); if(sv)sv.onclick=function(){ readStep();
         if(!w.employee_id||!w.start_date||!w.end_date){ showErr("Monteur, Start- und Enddatum sind erforderlich."); return; }
         if(w.end_date<w.start_date){ showErr("Enddatum darf nicht vor dem Startdatum liegen."); return; }
+        if(w.type==="urlaub" && !(w.label && w.label.trim())) w.label="Urlaub";
         var doSave=function(){ upsertAssignment({employee_id:w.employee_id,type:w.type,label:w.label,country:w.country,city:w.city,start_date:w.start_date,end_date:w.end_date,notes:w.notes}, existing?existing.id:null); closeModal(); render(); };
         var cs=getConflicts();
         if(cs.length){ confirmDialog("Für "+empName(+w.employee_id)+" besteht in diesem Zeitraum ein Konflikt (Urlaub oder Doppelbelegung). Trotzdem speichern?", doSave, {title:"Konflikt", yesLabel:"Trotzdem speichern", brand:true}); }
@@ -1284,7 +1366,9 @@
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="weeks"){ ui.weeks=+ev.target.value; render(); }
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="jump"){ var v=ev.target.value; if(v){ ui.windowStart=iso(startOfWeek(parseIso(v))); render(); } }
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="stats-year"){ ui.statsYear=ev.target.value; render(); }
+    if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="stats-team"){ ui.statsTeam=ev.target.value; render(); }
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="team-filter"){ ui.teamFilter=ev.target.value; render(); }
+    if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="list-emp"){ var v=ev.target.value; ui.selectedEmployee = v? +v : null; render(); }
   });
 
   // ---------- Balken ziehen / verlängern (Maus) ----------
