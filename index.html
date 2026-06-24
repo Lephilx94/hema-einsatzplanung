@@ -116,6 +116,8 @@
     box-shadow:0 1px 2px rgba(0,0,0,.15); cursor:grab; user-select:none; }
   .bar:hover { filter:brightness(1.08); }
   .bar.dragging { cursor:grabbing; z-index:30; box-shadow:0 4px 12px rgba(0,0,0,.3); }
+  .bar.locked { cursor:pointer; opacity:.82; }
+  .bar.locked:hover { filter:brightness(1.02); }
   .bar-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; pointer-events:none; flex:1; }
   .bar-h-l, .bar-h-r { position:absolute; top:0; bottom:0; width:8px; cursor:ew-resize; z-index:2; }
   .bar-h-l { left:0; } .bar-h-r { right:0; }
@@ -282,6 +284,8 @@
   }
   function fmtDE(s){ var p=s.split("-"); return p[2]+"."+p[1]+"."+p[0]; }
   function computeStatus(s,e){ var t=iso(new Date()); if(t<s)return"planned"; if(t>e)return"completed"; return"active"; }
+  // Abgeschlossene Einsätze (Enddatum in der Vergangenheit) sind gesperrt und müssen vor dem Bearbeiten bestätigt werden.
+  function isLocked(a){ return a && computeStatus(a.start_date,a.end_date)==="completed"; }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
 
   // ---------- Speicher ----------
@@ -573,10 +577,13 @@
         var bars=p.bars.map(function(b){
           var dash=b.a.type==="montage_tentative"?"border:1px dashed #166534;":"";
           var txt=b.a.label||b.a.country||"—";
-          var title=esc((b.a.label||"")+" "+(b.a.country?"· "+b.a.country:"")+" ("+b.a.start_date+" – "+b.a.end_date+")");
-          return '<button class="bar" data-bar="'+b.a.id+'" title="'+title+'" style="left:'+b.left+'px;width:'+b.width+
+          var locked=isLocked(b.a);
+          var title=esc((b.a.label||"")+" "+(b.a.country?"· "+b.a.country:"")+" ("+b.a.start_date+" – "+b.a.end_date+")"+(locked?" · abgeschlossen (gesperrt)":""));
+          var handles=locked?"":'<span class="bar-h-l"></span>';
+          var handlesR=locked?"":'<span class="bar-h-r"></span>';
+          return '<button class="bar'+(locked?" locked":"")+'" data-bar="'+b.a.id+'" title="'+title+'" style="left:'+b.left+'px;width:'+b.width+
             'px;top:'+(ROW_PAD+b.lane*(BAR_H+BAR_GAP))+'px;height:'+BAR_H+'px;background:'+TYPE_COLOR[b.a.type]+
-            ';color:'+TYPE_TEXT[b.a.type]+';'+dash+'"><span class="bar-h-l"></span><span class="bar-label">'+esc(txt)+'</span><span class="bar-h-r"></span></button>';
+            ';color:'+TYPE_TEXT[b.a.type]+';'+dash+'">'+handles+'<span class="bar-label">'+esc(txt)+'</span>'+handlesR+'</button>';
         }).join("");
         body+='<div class="hrow">'+
           '<div class="name-cell" style="width:'+NAME_W+'px;height:'+rowH+'px">'+esc(emp.name)+'</div>'+
@@ -1056,7 +1063,15 @@
   }
 
   // Geführter Dialog (3 Schritte) zum Anlegen/Bearbeiten eines Einsatzes
-  function openAssignModal(existing, prefill){
+  function openAssignModal(existing, prefill, bypassLock){
+    if(existing && isLocked(existing) && !bypassLock){
+      confirmDialog(
+        "Dieser Vorgang ist bereits abgeschlossen. Möchtest du wirklich Änderungen daran vornehmen?",
+        function(){ openAssignModal(existing, prefill, true); },
+        {title:"Abgeschlossener Vorgang", yesLabel:"Ja, bearbeiten", brand:true}
+      );
+      return;
+    }
     var first=employeesSorted()[0];
     var initEmp = existing?existing.employee_id : ((prefill&&prefill.employee_id)||(first?first.id:0));
     var initStart = existing ? existing.start_date
@@ -1471,6 +1486,8 @@
     var id=+bar.getAttribute("data-bar");
     var a=store.assignments.find(function(x){return x.id===id;});
     if(!a) return;
+    // Abgeschlossene Einsätze nicht per Ziehen verändern – nur über Bearbeiten-Dialog (mit Rückfrage).
+    if(isLocked(a)) return;
     e.preventDefault();
 
     var mode="move";
