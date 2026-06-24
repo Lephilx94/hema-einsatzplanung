@@ -124,6 +124,13 @@
   .avail-cols { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
   .avail-col h4 { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; margin:0 0 8px;
     display:flex; align-items:center; gap:6px; color:var(--muted); }
+  details.avail-col { border:1px solid var(--border); border-radius:10px; padding:8px 10px; background:var(--panel); }
+  details.avail-col > summary { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    display:flex; align-items:center; gap:6px; color:var(--muted); cursor:pointer; user-select:none; list-style:none; }
+  details.avail-col > summary::-webkit-details-marker { display:none; }
+  details.avail-col > summary .chev { margin-left:auto; transition:transform .15s ease; color:var(--muted); font-size:12px; }
+  details.avail-col[open] > summary .chev { transform:rotate(90deg); }
+  details.avail-col .avail-names { margin-top:10px; }
   .avail-col .cdot { width:9px; height:9px; border-radius:999px; display:inline-block; }
   .chip { display:inline-flex; align-items:center; gap:6px; background:var(--hover); border-radius:999px;
     padding:3px 10px 3px 3px; font-size:13px; margin:0 6px 6px 0; }
@@ -390,6 +397,7 @@
     typeFilter:"",
     statsYear:String(new Date().getFullYear()),
     statsTeam:"",
+    statsEmp:"",
     teamFilter:"",
     selectedEmployee:null
   };
@@ -498,12 +506,18 @@
       var hasU=mine.some(function(a){return a.type==="urlaub";}), hasE=mine.some(function(a){return a.type!=="urlaub";});
       if(hasE)busyE.push(emp); if(hasU)urlaubE.push(emp); if(!hasE&&!hasU)freeE.push(emp); });
     function chips(list){ return list.length ? list.map(function(e){ return '<span class="chip">'+avatar(e.name,20,e.color)+esc(e.name)+'</span>'; }).join("") : '<span class="chip-empty">–</span>'; }
+    function col(title,color,list){
+      return '<details class="avail-col">'+
+        '<summary><span class="cdot" style="background:'+color+'"></span>'+title+' ('+list.length+')<span class="chev">▸</span></summary>'+
+        '<div class="avail-names">'+chips(list)+'</div>'+
+      '</details>';
+    }
     var isThis = iso(wkS)===iso(startOfWeek(new Date()));
-    return '<h3 class="section-title" style="margin-bottom:10px">Wer ist frei? · '+(isThis?"Diese Woche · ":"")+'KW '+isoWeek(wkS)+' ('+fmtDE(iso(wkS))+'–'+fmtDE(iso(wkE))+')</h3>'+
+    return '<h3 class="section-title" style="margin-bottom:10px">Wer ist frei? · '+(isThis?"Diese Woche · ":"")+'KW '+isoWeek(wkS)+' ('+fmtDE(iso(wkS))+'–'+fmtDE(iso(wkE))+') <span class="hint" style="font-weight:400;text-transform:none;letter-spacing:0">· zum Aufklappen auf eine Spalte klicken</span></h3>'+
       '<div class="avail-cols">'+
-        '<div class="avail-col"><h4><span class="cdot" style="background:#16a34a"></span>Frei ('+freeE.length+')</h4>'+chips(freeE)+'</div>'+
-        '<div class="avail-col"><h4><span class="cdot" style="background:#005987"></span>Im Einsatz ('+busyE.length+')</h4>'+chips(busyE)+'</div>'+
-        '<div class="avail-col"><h4><span class="cdot" style="background:#eab308"></span>Im Urlaub ('+urlaubE.length+')</h4>'+chips(urlaubE)+'</div>'+
+        col("Frei","#16a34a",freeE)+
+        col("Im Einsatz","#005987",busyE)+
+        col("Im Urlaub","#eab308",urlaubE)+
       '</div>';
   }
 
@@ -719,21 +733,34 @@
       var emp=store.employees.find(function(e){return e.id===ui.selectedEmployee;});
       if(!emp){ ui.selectedEmployee=null; } else { return employeeDetailHTML(emp); }
     }
-    var groups={}; employeesSorted().forEach(function(e){ var k=e.team||"Ohne Team"; (groups[k]=groups[k]||[]).push(e); });
-    var out='<div class="toolbar"><span class="hint">Auf einen Monteur klicken, um Einsätze und Urlaube zu sehen.</span><div class="grow"></div><button class="btn btn-primary" data-act="new-emp">+ Monteur</button></div>';
-    Object.keys(groups).forEach(function(team){
-      out+='<h3 class="section-title">'+esc(team)+'</h3><div class="cards" style="margin-bottom:18px">'+
-        groups[team].map(function(e){
-          var mine=store.assignments.filter(function(a){return a.employee_id===e.id;});
-          var nE=mine.filter(function(a){return a.type!=="urlaub";}).length;
-          var nU=mine.filter(function(a){return a.type==="urlaub";}).length;
-          return '<button class="card click" data-open-emp="'+e.id+'">'+
-            '<div style="display:flex;align-items:center;gap:10px">'+avatar(e.name,34,e.color)+
-            '<span style="font-weight:600">'+esc(e.name)+'</span></div>'+
-            '<div class="hint" style="margin-top:6px">'+nE+' Einsätze · '+nU+' Urlaub</div></button>';
-        }).join("")+'</div>';
+
+    // Monteur-Auswahl (nach Team gruppiert)
+    var byTeam={};
+    store.employees.forEach(function(e){ var k=e.team||"Ohne Team"; (byTeam[k]=byTeam[k]||[]).push(e); });
+    var teamNames=Object.keys(byTeam).sort(function(a,b){
+      var ma=Math.min.apply(null, byTeam[a].map(function(e){return e.sort_order;}));
+      var mb=Math.min.apply(null, byTeam[b].map(function(e){return e.sort_order;}));
+      return ma-mb;
     });
-    if(store.employees.length===0) out+='<p class="hint">Noch keine Monteure angelegt.</p>';
+    var empOpts='<option value="">— Monteur wählen —</option>'+ teamNames.map(function(t){
+      var list=byTeam[t].slice().sort(function(x,y){ return x.name.localeCompare(y.name,"de"); });
+      return '<optgroup label="'+esc(t)+'">'+ list.map(function(e){
+        return '<option value="'+e.id+'">'+esc(e.name)+'</option>';
+      }).join("")+'</optgroup>';
+    }).join("");
+
+    var out='<div class="toolbar">'+
+      '<span class="hint">Monteur:</span>'+
+      '<select data-act="emp-select" style="min-width:220px">'+empOpts+'</select>'+
+      '<div class="grow"></div>'+
+      '<button class="btn btn-primary" data-act="new-emp">+ Monteur</button>'+
+    '</div>';
+
+    if(store.employees.length===0){
+      out+='<p class="hint">Noch keine Monteure angelegt.</p>';
+    } else {
+      out+='<div class="card"><div class="empty" style="padding:40px;text-align:center;color:var(--muted)">Bitte oben einen Monteur auswählen, um Einsätze und Urlaube zu sehen.</div></div>';
+    }
     return out;
   }
 
@@ -809,12 +836,17 @@
     }
 
     var teamSel = ui.statsTeam || "";
-    function inTeam(empId){ if(!teamSel) return true; return (empTeam(empId)||"Ohne Team")===teamSel; }
+    var empSel = ui.statsEmp || "";                 // "", "all" oder Monteur-ID
+    var selEmpId = (empSel && empSel!=="all") ? +empSel : null;
+    function inScope(empId){
+      if(selEmpId!=null) return empId===selEmpId;   // einzelner Monteur: Team-Filter ignorieren
+      return !teamSel || (empTeam(empId)||"Ohne Team")===teamSel;
+    }
 
     var perEmp={}; employeesSorted().forEach(function(e){ perEmp[e.id]={montage:0,tentative:0,sonstiges:0,urlaub:0}; });
     var totM=0,totT=0,totS=0,totU=0;
     store.assignments.forEach(function(a){
-      if(!inTeam(a.employee_id)) return;
+      if(!inScope(a.employee_id)) return;
       var d=daysIn(a); if(d<=0) return;
       var p=perEmp[a.employee_id] || (perEmp[a.employee_id]={montage:0,tentative:0,sonstiges:0,urlaub:0});
       if(a.type==="montage"){ p.montage+=d; totM+=d; }
@@ -824,7 +856,7 @@
     });
     var totE = totM+totT+totS;
 
-    var land={}; store.assignments.forEach(function(a){ if(!a.country) return; if(!inTeam(a.employee_id)) return; var d=daysIn(a); if(d<=0) return;
+    var land={}; store.assignments.forEach(function(a){ if(!a.country) return; if(!inScope(a.employee_id)) return; var d=daysIn(a); if(d<=0) return;
       if(!land[a.country]) land[a.country]={count:0,days:0}; land[a.country].count++; land[a.country].days+=d; });
     var landArr=Object.keys(land).map(function(c){ return {country:c,count:land[c].count,days:land[c].days}; })
       .sort(function(x,y){ return y.days-x.days; });
@@ -839,7 +871,8 @@
       var groups={}, order=[];
       employeesSorted().forEach(function(e){
         var team=e.team||"Ohne Team";
-        if(teamSel && team!==teamSel) return;
+        if(selEmpId!=null){ if(e.id!==selEmpId) return; }
+        else if(teamSel && team!==teamSel){ return; }
         if(!groups[team]){ groups[team]=[]; order.push(team); }
         groups[team].push(e);
       });
@@ -871,12 +904,37 @@
     var teamStatOpts='<option value=""'+(!teamSel?" selected":"")+'>Alle Teams</option>'+
       teams().map(function(t){ return '<option value="'+esc(t)+'"'+(teamSel===t?" selected":"")+'>'+esc(t)+'</option>'; }).join("");
 
-    return ''+
-    '<div class="toolbar"><span class="hint">Auswertung für:</span>'+
+    // Monteur-Auswahl (nach Team gruppiert) inkl. "Alle Monteure"
+    var byTeamS={};
+    store.employees.forEach(function(e){ var k=e.team||"Ohne Team"; (byTeamS[k]=byTeamS[k]||[]).push(e); });
+    var teamNamesS=Object.keys(byTeamS).sort(function(a,b){
+      var ma=Math.min.apply(null, byTeamS[a].map(function(e){return e.sort_order;}));
+      var mb=Math.min.apply(null, byTeamS[b].map(function(e){return e.sort_order;}));
+      return ma-mb;
+    });
+    var empStatOpts='<option value=""'+(empSel===""?" selected":"")+'>— Monteur wählen —</option>'+
+      '<option value="all"'+(empSel==="all"?" selected":"")+'>Alle Monteure</option>'+
+      teamNamesS.map(function(t){
+        var list=byTeamS[t].slice().sort(function(x,y){ return x.name.localeCompare(y.name,"de"); });
+        return '<optgroup label="'+esc(t)+'">'+ list.map(function(e){
+          return '<option value="'+e.id+'"'+(selEmpId===e.id?" selected":"")+'>'+esc(e.name)+'</option>';
+        }).join("")+'</optgroup>';
+      }).join("");
+
+    var toolbar='<div class="toolbar"><span class="hint">Auswertung für:</span>'+
       '<select data-act="stats-year">'+yearOpts+'</select>'+
-      '<span class="hint" style="margin-left:8px">Team:</span>'+
-      '<select data-act="stats-team">'+teamStatOpts+'</select>'+
-      '<span class="grow hint">Alle Werte in Tagen ('+periodLabel+').</span></div>'+
+      '<span class="hint" style="margin-left:8px">Monteur:</span>'+
+      '<select data-act="stats-emp" style="min-width:200px">'+empStatOpts+'</select>'+
+      (empSel==="all" ? '<span class="hint" style="margin-left:8px">Team:</span><select data-act="stats-team">'+teamStatOpts+'</select>' : '')+
+      '<span class="grow hint">Alle Werte in Tagen ('+periodLabel+').</span></div>';
+
+    // Ohne Auswahl: nur Hinweis
+    if(empSel===""){
+      return toolbar+'<div class="card"><div class="empty" style="padding:40px;text-align:center;color:var(--muted)">Bitte oben einen Monteur (oder „Alle Monteure") auswählen, um die Auswertung zu sehen.</div></div>';
+    }
+
+    return ''+
+    toolbar+
 
     '<div class="cards" style="grid-template-columns:1fr;gap:16px">'+
       '<div class="card"><h3 class="section-title">Tage pro Monteur ('+periodLabel+')</h3>'+
@@ -977,20 +1035,39 @@
     }).sort(function(a,b){ return a.start_date.localeCompare(b.start_date); });
   }
 
+  // Ist der Monteur an diesem Tag bereits verplant (egal welche Art)?
+  function dayOccupied(empId, dIso){
+    return store.assignments.some(function(a){ return a.employee_id===empId && a.start_date<=dIso && a.end_date>=dIso; });
+  }
+  // Nächster freier Tag eines Monteurs ab heute (oder ab fromIso)
+  function nextFreeDate(empId, fromIso){
+    var base = fromIso || iso(new Date());
+    if(!empId) return base;
+    var d=parseIso(base);
+    for(var i=0;i<2000;i++){ var s=iso(d); if(!dayOccupied(empId,s)) return s; d=addDays(d,1); }
+    return base;
+  }
+
   // Geführter Dialog (3 Schritte) zum Anlegen/Bearbeiten eines Einsatzes
   function openAssignModal(existing, prefill){
     var first=employeesSorted()[0];
+    var initEmp = existing?existing.employee_id : ((prefill&&prefill.employee_id)||(first?first.id:0));
+    var initStart = existing ? existing.start_date
+      : ((prefill&&prefill.start_date) || nextFreeDate(initEmp));
+    var initEnd = existing ? existing.end_date
+      : ((prefill&&prefill.end_date) || initStart);
     var w={
       step:1,
-      employee_id: existing?existing.employee_id : ((prefill&&prefill.employee_id)||(first?first.id:0)),
+      employee_id: initEmp,
       type: existing?existing.type : ((prefill&&prefill.type)||"montage"),
       label: existing?(existing.label||""):"",
       country: existing?(existing.country||""):"",
       continent: continentOf(existing?(existing.country||""):((prefill&&prefill.country)||"")),
       city: existing?(existing.city||""):"",
-      start_date: existing?existing.start_date : ((prefill&&prefill.start_date)||""),
-      end_date: existing?existing.end_date : ((prefill&&prefill.end_date)||(prefill&&prefill.start_date)||""),
-      notes: existing?(existing.notes||""):""
+      start_date: initStart,
+      end_date: initEnd,
+      notes: existing?(existing.notes||""):"",
+      _isNew: !existing
     };
     var excludeId = existing?existing.id:null;
 
@@ -1099,6 +1176,12 @@
       if(w.step===1){
         var ts=document.getElementById("w-type");
         if(ts) ts.onchange=function(){ readStep(); renderWiz(); };
+        var es=document.getElementById("w-emp");
+        if(es) es.onchange=function(){
+          readStep();
+          if(w._isNew){ var nf=nextFreeDate(+w.employee_id); w.start_date=nf; w.end_date=nf; }
+          renderWiz();
+        };
       }
       if(w.step===3){
         var contSel=document.getElementById("w-continent");
@@ -1335,8 +1418,8 @@
       var act=el.getAttribute("data-act");
       if(act==="theme"){ setTheme(ui.theme==="dark"?"light":"dark"); render(); }
       else if(act==="new-assign"){ openAssignModal(null,null); }
-      else if(act==="new-assign-for"){ var fid=+el.getAttribute("data-emp"); var td=iso(new Date());
-        openAssignModal(null,{employee_id:fid,start_date:td,end_date:td,type:"montage"}); }
+      else if(act==="new-assign-for"){ var fid=+el.getAttribute("data-emp");
+        openAssignModal(null,{employee_id:fid,type:"montage"}); }
       else if(act==="emp-back"){ ui.selectedEmployee=null; render(); }
       else if(act==="new-emp"){ openEmpModal(null); }
       else if(act==="export"){ exportCSV(); }
@@ -1367,8 +1450,10 @@
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="jump"){ var v=ev.target.value; if(v){ ui.windowStart=iso(startOfWeek(parseIso(v))); render(); } }
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="stats-year"){ ui.statsYear=ev.target.value; render(); }
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="stats-team"){ ui.statsTeam=ev.target.value; render(); }
+    if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="stats-emp"){ ui.statsEmp=ev.target.value; render(); }
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="team-filter"){ ui.teamFilter=ev.target.value; render(); }
     if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="list-emp"){ var v=ev.target.value; ui.selectedEmployee = v? +v : null; render(); }
+    if(ev.target.getAttribute && ev.target.getAttribute("data-act")==="emp-select"){ var ve=ev.target.value; ui.selectedEmployee = ve? +ve : null; render(); }
   });
 
   // ---------- Balken ziehen / verlängern (Maus) ----------
