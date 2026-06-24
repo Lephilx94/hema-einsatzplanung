@@ -132,7 +132,14 @@
   details.avail-col > summary::-webkit-details-marker { display:none; }
   details.avail-col > summary .chev { margin-left:auto; transition:transform .15s ease; color:var(--muted); font-size:12px; }
   details.avail-col[open] > summary .chev { transform:rotate(90deg); }
-  details.avail-col .avail-names { margin-top:10px; }
+  details.avail-col .avail-names { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+  details.avail-team-col { border:1px solid var(--border); border-radius:8px; padding:6px 9px; background:var(--bg); }
+  details.avail-team-col > summary { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--brand); cursor:pointer; list-style:none; display:flex; align-items:center; }
+  details.avail-team-col > summary::-webkit-details-marker { display:none; }
+  details.avail-team-col > summary .chev { margin-left:auto; transition:transform .15s ease; color:var(--muted); font-size:11px; }
+  details.avail-team-col[open] > summary .chev { transform:rotate(90deg); }
+  .avail-team-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .avail-col .cdot { width:9px; height:9px; border-radius:999px; display:inline-block; }
   .chip { display:inline-flex; align-items:center; gap:6px; background:var(--hover); border-radius:999px;
     padding:3px 10px 3px 3px; font-size:13px; margin:0 6px 6px 0; }
@@ -516,7 +523,19 @@
     emps.forEach(function(emp){ var mine=(byEmp[emp.id]||[]).filter(ov);
       var hasU=mine.some(function(a){return a.type==="urlaub";}), hasE=mine.some(function(a){return a.type!=="urlaub";});
       if(hasE)busyE.push(emp); if(hasU)urlaubE.push(emp); if(!hasE&&!hasU)freeE.push(emp); });
-    function chips(list){ return list.length ? list.map(function(e){ return '<span class="chip">'+avatar(e.name,20,e.color)+esc(e.name)+'</span>'; }).join("") : '<span class="chip-empty">–</span>'; }
+    function chips(list){
+      if(!list.length) return '<span class="chip-empty">–</span>';
+      // Nach Monteur-Gruppe (Team) unterteilen; jede Gruppe ist erneut aufklappbar
+      var groups={}, order=[];
+      list.forEach(function(e){ var k=e.team||"Ohne Team"; if(!groups[k]){groups[k]=[];order.push(k);} groups[k].push(e); });
+      return order.map(function(k){
+        var inner=groups[k].map(function(e){ return '<span class="chip">'+avatar(e.name,20,e.color)+esc(e.name)+'</span>'; }).join("");
+        return '<details class="avail-team-col">'+
+          '<summary>'+esc(k)+' ('+groups[k].length+')<span class="chev">▸</span></summary>'+
+          '<div class="avail-team-chips">'+inner+'</div>'+
+        '</details>';
+      }).join("");
+    }
     function col(title,color,list){
       return '<details class="avail-col">'+
         '<summary><span class="cdot" style="background:'+color+'"></span>'+title+' ('+list.length+')<span class="chev">▸</span></summary>'+
