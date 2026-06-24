@@ -307,7 +307,8 @@
 
   // ===== VERSIONS-DATUM =====
   // Nach jeder Änderung hier das Datum anpassen, dann sieht man oben im Kopf sofort, welche Version geladen ist.
-  var APP_VERSION = "24.06.2026";
+  // Regel: pro Tag bei "Build 1" beginnen, jede weitere Änderung am selben Tag hochzählen.
+  var APP_VERSION = "24.06.2026 · Build 3";
 
   var cloud = { sb:null, on:false, status:"local", error:"", subscribed:false };
   function _ls(k){ try{ return localStorage.getItem(k)||""; }catch(e){ return ""; } }
@@ -324,8 +325,9 @@
   function cloudErr(e){ cloud.error=String(e&&e.message||e); cloud.status="error"; console.warn("Supabase:",cloud.error); }
   function cloudUpsert(table,row){ if(!cloud.on) return; try{ cloud.sb.from(table).upsert(row).then(function(r){ if(r.error) cloudErr(r.error); }); }catch(e){ cloudErr(e); } }
   function cloudDelete(table,id){ if(!cloud.on) return; try{ cloud.sb.from(table).delete().eq("id",id).then(function(r){ if(r.error) cloudErr(r.error); }); }catch(e){ cloudErr(e); } }
-  function mapEmp(x){ return {id:x.id,name:x.name,team:x.team||"",sort_order:x.sort_order||0,color:x.color||""}; }
-  function mapAsg(x){ return {id:x.id,employee_id:x.employee_id,type:x.type,label:x.label||"",country:x.country||"",city:x.city||"",start_date:x.start_date,end_date:x.end_date,notes:x.notes||""}; }
+  function numId(v){ var n=Number(v); return isNaN(n)?v:n; }
+  function mapEmp(x){ return {id:numId(x.id),name:x.name,team:x.team||"",sort_order:x.sort_order||0,color:x.color||""}; }
+  function mapAsg(x){ return {id:numId(x.id),employee_id:numId(x.employee_id),type:x.type,label:x.label||"",country:x.country||"",city:x.city||"",start_date:x.start_date,end_date:x.end_date,notes:x.notes||""}; }
   function cloudLoad(){
     if(!cloud.on) return;
     Promise.all([ cloud.sb.from("employees").select("*"), cloud.sb.from("assignments").select("*") ]).then(function(res){
@@ -1061,16 +1063,18 @@
 
   // Überschneidungen eines Monteurs im Zeitraum finden
   function findConflicts(empId, start, end, excludeId){
+    var eid=String(empId);
     return store.assignments.filter(function(a){
-      if(a.employee_id!==empId) return false;
-      if(excludeId && a.id===excludeId) return false;
+      if(String(a.employee_id)!==eid) return false;
+      if(excludeId!=null && String(a.id)===String(excludeId)) return false;
       return a.start_date<=end && a.end_date>=start; // Zeiträume überlappen
     }).sort(function(a,b){ return a.start_date.localeCompare(b.start_date); });
   }
 
   // Ist der Monteur an diesem Tag bereits verplant (egal welche Art)?
   function dayOccupied(empId, dIso){
-    return store.assignments.some(function(a){ return a.employee_id===empId && a.start_date<=dIso && a.end_date>=dIso; });
+    var eid=String(empId);
+    return store.assignments.some(function(a){ return String(a.employee_id)===eid && a.start_date<=dIso && a.end_date>=dIso; });
   }
   // Nächster freier Tag eines Monteurs ab heute (oder ab fromIso)
   function nextFreeDate(empId, fromIso){
